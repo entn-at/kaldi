@@ -61,6 +61,17 @@ NnetCctcTrainer::NnetCctcTrainer(const NnetCctcTrainerOptions &config,
                                // natural-gradient updates.
     SetZero(is_gradient, delta_nnet_);
   }
+  if (config_.read_cache != "") {
+    bool binary;
+    try {
+      Input ki(config_.read_cache, &binary);
+      compiler_.ReadCache(ki.Stream(), binary);
+      KALDI_LOG << "Read computation cache from " << config_.read_cache;
+    } catch (...) {
+      KALDI_WARN << "Could not open cached computation. "
+                    "Probably this is the first training iteration.";
+    }
+  } 
   trans_model_.ComputeWeights(&cu_weights_);
      startX = std::clock();
 }
@@ -167,6 +178,11 @@ bool NnetCctcTrainer::PrintTotalStats() const {
 
 
 NnetCctcTrainer::~NnetCctcTrainer() {
+  if (config_.write_cache != "") {
+    Output ko(config_.write_cache, config_.binary_write_cache);
+    compiler_.WriteCache(ko.Stream(), config_.binary_write_cache);
+    KALDI_LOG << "Wrote computation cache to " << config_.write_cache;
+  } 
   delete delta_nnet_;
 }
 
