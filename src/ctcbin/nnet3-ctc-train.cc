@@ -131,6 +131,9 @@ std::cout << "currentDateTime()=" << currentDateTime() << std::endl;
 //~ #endif
 std::cout << "currentDateTime()=" << currentDateTime() << std::endl;
     KALDI_LOG << "Ending after DeviceReset " << currentDateTime();
+#if HAVE_CUDA==1
+    CuDevice::Instantiate().DeviceReset();
+#endif
     return (ok ? 0 : 1);
   } catch(const std::exception &e) {
     std::cerr << e.what() << '\n';

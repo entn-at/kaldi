@@ -91,6 +91,9 @@ int main(int argc, char *argv[]) {
 #endif
     Output ko(model_wxfilename, binary_write);
     nnet.Write(ko.Stream(), binary_write);
+#if HAVE_CUDA==1
+    CuDevice::Instantiate().DeviceReset();
+#endif
     
     KALDI_LOG << "Wrote raw nnet model to " << model_wxfilename;
     return (ok ? 0 : 1);
