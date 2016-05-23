@@ -43,7 +43,8 @@ int main(int argc, char *argv[]) {
         
     bool compress = false;
     bool compactify = true;
-    int32 minibatch_size = 64;
+    int32 minibatch_size = 512;
+    bool discard_partial_minibatches = false;
 
     ParseOptions po(usage);
     po.Register("minibatch-size", &minibatch_size, "Target size of minibatches "
@@ -53,6 +54,9 @@ int main(int argc, char *argv[]) {
     po.Register("compactify", &compactify, "If true, combines the FSTs in the "
                 "supervision objects in a way that's more efficient with GPU "
                 "training.  Recommended true (set to false only for testing)");
+    po.Register("discard-partial-minibatches", &discard_partial_minibatches,
+                "discard any partial minibatches of 'uneven' size that may be "
+                "encountered at the end.");
     
     po.Read(argc, argv);
 
@@ -83,7 +87,8 @@ int main(int argc, char *argv[]) {
       example_reader.Next();
       num_read++;
       
-      if (minibatch_ready || (example_reader.Done() && !examples.empty())) {
+      if (minibatch_ready || (!discard_partial_minibatches &&
+          (example_reader.Done() && !examples.empty()))) {
         NnetCctcExample merged_eg;
         MergeCctcExamples(compress, compactify, &examples, &merged_eg);
         std::ostringstream ostr;
