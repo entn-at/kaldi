@@ -17,7 +17,7 @@ LIBNAME = kaldi-ctc
 
 ADDLIBS = ../lat/kaldi-lat.a ../hmm/kaldi-hmm.a ../tree/kaldi-tree.a \
            ../matrix/kaldi-matrix.a ../cudamatrix/kaldi-cudamatrix.a \
-          ../util/kaldi-util.a ../base/kaldi-base.a
+          ../util/kaldi-util.a ../base/kaldi-base.a  ../fstext/kaldi-fstext.a
 
 
 include ../makefiles/default_rules.mk
