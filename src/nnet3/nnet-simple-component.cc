@@ -741,7 +741,7 @@ void ClipGradientComponent::InitFromConfig(ConfigLine *cfl) {
   BaseFloat clipping_threshold = 15.0;
   BaseFloat self_repair_clipped_proportion_threshold = 0.01;
   BaseFloat self_repair_target = 0.0;
-  BaseFloat self_repair_scale = 1.0;
+  BaseFloat self_repair_scale = 0.0;
   cfl->GetValue("clipping-threshold", &clipping_threshold);
   cfl->GetValue("norm-based-clipping", &norm_based_clipping);
   cfl->GetValue("self-repair-clipped-proportion-threshold",
