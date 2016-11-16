@@ -84,6 +84,9 @@ int main(int argc, char *argv[]) {
 #endif
     WriteKaldiObject(nnet, nnet_wxfilename, binary_write);
     KALDI_LOG << "Wrote model to " << nnet_wxfilename;
+#if HAVE_CUDA==1
+    CuDevice::Instantiate().DeviceReset();
+#endif
     return (ok ? 0 : 1);
   } catch(const std::exception &e) {
     std::cerr << e.what() << '\n';
