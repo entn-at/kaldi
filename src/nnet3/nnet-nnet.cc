@@ -907,5 +907,25 @@ void Nnet::ResetGenerators() {
   }
 }
 
+double Nnet::ComputeNonlinearityMean(std::string nonlinearity_type) {
+  double sum = 0.0;
+  int count = 0;
+    
+  for(size_t i = 0; i < components_.size(); i++) {
+    if(nonlinearity_type.compare(components_[i]->Type()) == 0) {
+      if(NonlinearComponent *component = dynamic_cast<NonlinearComponent*>(components_[i])) {
+        Vector<double> deriv_avg_dbl(component->DerivSum());
+        Vector<BaseFloat> deriv_avg(deriv_avg_dbl);
+        deriv_avg.Scale(1.0 / component->Count());
+        sum += deriv_avg.Sum() / deriv_avg.Dim();
+        count++;
+      } 
+    }
+  }
+    
+  return sum / (double) count;
+}
+
+
 } // namespace nnet3
 } // namespace kaldi

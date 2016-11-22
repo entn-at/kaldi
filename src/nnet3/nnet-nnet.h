@@ -249,7 +249,9 @@ class Nnet {
   void ResetGenerators(); // resets random-number generators for all
   // random components.  You must also set srand() for this to be
   // effective.
-  
+
+  double ComputeNonlinearityMean(std::string nonlinearity_type);
+
  private:
 
   void Destroy();

@@ -19,24 +19,6 @@
 
 #include "nnet3/nnet-cctc-training.h"
 #include "nnet3/nnet-utils.h"
-#include <ctime>
-#include <time.h>
-std::clock_t    startX;
-// Get current date/time, format is YYYY-MM-DD.HH:mm:ss
-const std::string currentDateTime2() {
-  
-     std::cout << "Time: " << (std::clock() - startX) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << std::endl;
-    time_t     now = time(0);
-    struct tm  tstruct;
-    char       buf[80];
-    tstruct = *localtime(&now);
-    // Visit http://en.cppreference.com/w/cpp/chrono/c/strftime
-    // for more information about date/time format
-    strftime(buf, sizeof(buf), "%Y-%m-%d.%X", &tstruct);
-
-     startX = std::clock();
-    return buf;
-}
 
 namespace kaldi {
 namespace nnet3 {
@@ -73,35 +55,26 @@ NnetCctcTrainer::NnetCctcTrainer(const NnetCctcTrainerOptions &config,
     }
   } 
   trans_model_.ComputeWeights(&cu_weights_);
-     startX = std::clock();
 }
 
 
 void NnetCctcTrainer::Train(const NnetCctcExample &cctc_eg) {
   bool need_model_derivative = true;
   ComputationRequest request;
-    KALDI_LOG << "GetCctcComputationRequest b " << currentDateTime2();
   GetCctcComputationRequest(*nnet_, cctc_eg, need_model_derivative,
                             config_.store_component_stats,
                             &request);
-    KALDI_LOG << "GetCctcComputationRequest " << currentDateTime2();
   const NnetComputation *computation = compiler_.Compile(request);
-    KALDI_LOG << "Compile " << currentDateTime2();
 
   NnetComputer computer(config_.compute_config, *computation,
                         *nnet_,
                         (delta_nnet_ == NULL ? nnet_ : delta_nnet_));
   // give the inputs to the computer object.
-    KALDI_LOG << "computer " << currentDateTime2();
   computer.AcceptInputs(*nnet_, cctc_eg.inputs);
-    KALDI_LOG << "AcceptInputs " << currentDateTime2();
   computer.Forward();
-    KALDI_LOG << "Forward " << currentDateTime2();
 
   this->ProcessOutputs(cctc_eg, &computer);
-    KALDI_LOG << "ProcessOutputs " << currentDateTime2();
   computer.Backward();
-    KALDI_LOG << "Backward " << currentDateTime2();
 
   if (delta_nnet_ != NULL) {
     BaseFloat scale = (1.0 - config_.momentum);
@@ -120,13 +93,9 @@ void NnetCctcTrainer::Train(const NnetCctcExample &cctc_eg) {
         }
       }
     }
-    KALDI_LOG << "if (delta_nnet_ != NULL) " << currentDateTime2();
     AddNnet(*delta_nnet_, scale, nnet_);
-    KALDI_LOG << "AddNnet " << currentDateTime2();
     ScaleNnet(config_.momentum, delta_nnet_);
-    KALDI_LOG << "ScaleNnet " << currentDateTime2();
   }
-    KALDI_LOG << "Train END " << currentDateTime2();
 }
 
 
@@ -186,6 +155,16 @@ NnetCctcTrainer::~NnetCctcTrainer() {
   delete delta_nnet_;
 }
 
+void NnetCctcTrainer::setupNewIteration(Nnet* nnet) {
+        num_minibatches_processed_ = 0;
+        objf_info_.clear();
+	
+	if(nnet != NULL) this->nnet_ = nnet;
+
+	delete delta_nnet_;
+	delta_nnet_ = this->nnet_->Copy();
+	SetZero(false, delta_nnet_);
+}
 
 } // namespace nnet3
 } // namespace kaldi

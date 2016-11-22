@@ -55,6 +55,10 @@ class NnetCctcTrainer {
 
   // Prints out the final stats, and return true if there was a nonzero count.
   bool PrintTotalStats() const;
+  
+  void setupNewIteration(Nnet *nnet);
+
+  Nnet* getNnet();
 
   ~NnetCctcTrainer();
  private:
