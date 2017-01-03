@@ -252,6 +252,8 @@ class Nnet {
 
   double ComputeNonlinearityMean(std::string nonlinearity_type);
 
+  void ZeroStats();
+
  private:
 
   void Destroy();

@@ -907,6 +907,15 @@ void Nnet::ResetGenerators() {
   }
 }
 
+void Nnet::ZeroStats() {
+  for (size_t i = 0; i < components_.size(); i++) {
+    NonlinearComponent *nonlinear_component =
+        dynamic_cast<NonlinearComponent*>(components_[i]);
+    if (nonlinear_component != NULL)
+      nonlinear_component->ZeroStats();
+  }
+}
+
 double Nnet::ComputeNonlinearityMean(std::string nonlinearity_type) {
   double sum = 0.0;
   int count = 0;

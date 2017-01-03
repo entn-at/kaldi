@@ -160,6 +160,7 @@ void NnetCctcTrainer::setupNewIteration(Nnet* nnet) {
         objf_info_.clear();
 	
 	if(nnet != NULL) this->nnet_ = nnet;
+	this->nnet_->ZeroStats();
 
 	delete delta_nnet_;
 	delta_nnet_ = this->nnet_->Copy();
