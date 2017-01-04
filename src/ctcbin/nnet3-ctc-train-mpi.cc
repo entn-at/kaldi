@@ -168,7 +168,7 @@ int main(int argc, char *argv[]) {
             nnet_buffer_ostream.seekg(0, std::ios::beg);
 
             for(int s = 1; s <= this_num_jobs; s++) {
-                KALDI_LOG << "Master sending package to slave" << s << " out of " << this_num_jobs;
+                KALDI_LOG << "< iteration " << current_iter << " sending package to slave" << s << " out of " << this_num_jobs << " after " << (time(NULL) - start) << " seconds";
                 int k = (num_archives_processed + s - 1);
                 archive = k%num_archives + 1;
                 frame_shift = (k/num_archives)%frame_subsampling_factor;
@@ -186,6 +186,8 @@ int main(int argc, char *argv[]) {
             }
             nnet_buffer_ostream.str(std::string());
             num_archives_processed += this_num_jobs;
+	    
+	    KALDI_LOG << "< iteration " << current_iter << " sending commands/models ended after " << (time(NULL) - start) << " seconds";
 
             for(int s = 1; s <= this_num_jobs; s++)
                 MPI_Irecv(nnet_sizes + s - 1, 1, MPI_INT, s, MPI_TAG, MPI_COMM_WORLD, requests + s - 1);
