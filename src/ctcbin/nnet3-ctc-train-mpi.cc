@@ -29,10 +29,6 @@
 #define MPI_TAG 1
 
 #define COMM_DIE 0
-#define COMM_TWO_WAY 1
-#define COMM_FORWARD 2
-#define COMM_BACKWARD 3
-#define COMM_NO_MODEL 4
 
 int main(int argc, char *argv[]) {
 
@@ -58,8 +54,7 @@ int main(int argc, char *argv[]) {
         "integer values from the range 1-<num-archives>. This is a MPI version of single threaded nnet3-ctc-train,\n"
         "it spawns np - 1 (np is the MPI comm size, one process is master) slaves, each of which \n"
         "uses a GPU. The number of slaves actually performing computations, learning rate and shrink value \n"
-        "are determined dynamically for each iteration. The master will average \n"
-        "models from the slaves every <avg-freq> iteration.\n"
+        "are determined dynamically for each iteration.\n"
         "\n"
         "Usage:  nnet3-train-mpi [options] <raw-model-in> <training-examples-in> <out-model-dir> "
 		"<current-iter> <num-iters> <num-archives-to-process> <num-archives-processed> <num-archives> "
@@ -83,7 +78,7 @@ int main(int argc, char *argv[]) {
 
     po.Read(argc, argv);
 
-    if (po.NumArgs() != 16) {
+    if (po.NumArgs() != 15) {
       po.PrintUsage();
       exit(1);
     }
@@ -99,7 +94,7 @@ int main(int argc, char *argv[]) {
 
     std::stringstream nnet_buffer_ostream;
 
-    int comm_mode, archive, nnet_size, frame_shift;
+    int archive, nnet_size, frame_shift;
 
     // MASTER
     if(!my_rank) {
@@ -125,14 +120,11 @@ int main(int argc, char *argv[]) {
 
         int frame_subsampling_factor = std::atoi(po.GetArg(15).c_str());
 
-        int avg_freq = std::atoi(po.GetArg(16).c_str());
-
         Nnet nnet;
         nnet.Read(input.Stream(), binary_read);
 
         time_t start = time(NULL);
 
-        int avg_cnt = 0;
         for(; current_iter != num_iters; current_iter++) {
 
             // TODO: find formula for the optimal number of jobs
@@ -151,16 +143,8 @@ int main(int argc, char *argv[]) {
             KALDI_LOG << "sigmoid mean " << sigmoid_mean << ", shrink threshold " << shrink_threshold << ", shrink " << shrink;
             if(sigmoid_mean > shrink_threshold) this_shrink = shrink;
 
-            if(avg_freq == 1)
-                comm_mode = COMM_TWO_WAY;
-            else if((avg_cnt % avg_freq) == 0)
-                comm_mode = COMM_FORWARD;
-            else if((avg_cnt % avg_freq) == avg_freq - 1)
-                comm_mode = COMM_BACKWARD;
-            else comm_mode = COMM_NO_MODEL;
-
             KALDI_LOG << "On iteration " << current_iter << ", learning rate is " << this_learning_rate
-                << ", shrink value is " << this_shrink << " and comm mode is " << comm_mode;
+                << ", shrink value is " << this_shrink;
 
             nnet.Write(nnet_buffer_ostream, true);
             nnet_buffer_ostream.seekg(0, std::ios::end);
@@ -173,21 +157,18 @@ int main(int argc, char *argv[]) {
                 archive = k%num_archives + 1;
                 frame_shift = (k/num_archives)%frame_subsampling_factor;
 
-                MPI_Send(&comm_mode, 1, MPI_INT, s, MPI_TAG, MPI_COMM_WORLD);
                 MPI_Send(&archive, 1, MPI_INT, s, MPI_TAG, MPI_COMM_WORLD);
                 MPI_Send(&frame_shift, 1, MPI_INT, s, MPI_TAG, MPI_COMM_WORLD);
                 MPI_Send(&current_iter, 1, MPI_INT, s, MPI_TAG, MPI_COMM_WORLD);
                 MPI_Send(&this_learning_rate, 1, MPI_DOUBLE, s, MPI_TAG, MPI_COMM_WORLD);
 
-                if(comm_mode == COMM_FORWARD || comm_mode == COMM_TWO_WAY) {
-                    MPI_Send(&nnet_size, 1, MPI_INT, s, MPI_TAG, MPI_COMM_WORLD);
-                    MPI_Send((void *) nnet_buffer_ostream.str().c_str(), nnet_size, MPI_BYTE, s, MPI_TAG, MPI_COMM_WORLD);
-                }
+                MPI_Send(&nnet_size, 1, MPI_INT, s, MPI_TAG, MPI_COMM_WORLD);
+                MPI_Send((void *) nnet_buffer_ostream.str().c_str(), nnet_size, MPI_BYTE, s, MPI_TAG, MPI_COMM_WORLD);
             }
             nnet_buffer_ostream.str(std::string());
             num_archives_processed += this_num_jobs;
-	    
-	    KALDI_LOG << "< iteration " << current_iter << " sending commands/models ended after " << (time(NULL) - start) << " seconds";
+        
+            KALDI_LOG << "< iteration " << current_iter << " sending commands/models ended after " << (time(NULL) - start) << " seconds";
 
             for(int s = 1; s <= this_num_jobs; s++)
                 MPI_Irecv(nnet_sizes + s - 1, 1, MPI_INT, s, MPI_TAG, MPI_COMM_WORLD, requests + s - 1);
@@ -197,47 +178,42 @@ int main(int argc, char *argv[]) {
                 MPI_Waitany(this_num_jobs, requests, &request_completed, &status);
 
                 nnet_size = nnet_sizes[request_completed];
-                if(comm_mode == COMM_BACKWARD || comm_mode == COMM_TWO_WAY) {
-                    char *nnet_buffer = new char[nnet_size];
-                    MPI_Recv(nnet_buffer, nnet_size, MPI_BYTE, request_completed + 1, MPI_TAG, MPI_COMM_WORLD, &status);
-                    std::istringstream nnet_buffer_istream(std::string(nnet_buffer, nnet_size));
+                
+                char *nnet_buffer = new char[nnet_size];
+                MPI_Recv(nnet_buffer, nnet_size, MPI_BYTE, request_completed + 1, MPI_TAG, MPI_COMM_WORLD, &status);
+                std::istringstream nnet_buffer_istream(std::string(nnet_buffer, nnet_size));
 
-		    KALDI_LOG << "< iteration " << current_iter << " averaging or setting next model starting after " << (time(NULL) - start) << " seconds";
-                    if(result_count > 0) {
-                        Nnet src_nnet;
-                        src_nnet.Read(nnet_buffer_istream, true);
-                        AddNnet(src_nnet, 1.0/this_num_jobs, &nnet);
-                    }
-                    else {
-                        nnet.Read(nnet_buffer_istream, true);
-                        ScaleNnet(1.0/this_num_jobs, &nnet);
-                    }
-		    KALDI_LOG << "< iteration " << current_iter << " averaging or setting next model ended after " << (time(NULL) - start) << " seconds";
-
-                    delete nnet_buffer;
+                KALDI_LOG << "< iteration " << current_iter << " averaging or setting next model starting after " << (time(NULL) - start) << " seconds";
+                if(result_count > 0) {
+                    Nnet src_nnet;
+                    src_nnet.Read(nnet_buffer_istream, true);
+                    AddNnet(src_nnet, 1.0/this_num_jobs, &nnet);
                 }
+                else {
+                    nnet.Read(nnet_buffer_istream, true);
+                    ScaleNnet(1.0/this_num_jobs, &nnet);
+                }
+                KALDI_LOG << "< iteration " << current_iter << " averaging or setting next model ended after " << (time(NULL) - start) << " seconds";
+
+                delete nnet_buffer;
             }
 
             ScaleNnet(this_shrink, &nnet);
 
             KALDI_LOG << "< iteration " << current_iter << " ends after " << (time(NULL) - start) << " seconds";
 
-            if(comm_mode == COMM_BACKWARD || comm_mode == COMM_TWO_WAY) {                
-                std::stringstream filename;
-                filename << nnet_wxdir << (current_iter + 1) << ".mdl";
+            std::stringstream filename;
+            filename << nnet_wxdir << (current_iter + 1) << ".mdl";
                 
-                if (write_raw) {
-                    WriteKaldiObject(nnet, filename.str(), binary_write);
-                }
-                else {
-                    Output output(filename.str(), binary_write);
-                    trans_model.Write(output.Stream(), binary_write);
-                    nnet.Write(output.Stream(), binary_write);
-                }
-                KALDI_LOG << "Wrote model to " << filename;
+            if (write_raw) {
+                WriteKaldiObject(nnet, filename.str(), binary_write);
             }
-
-            avg_cnt++;
+            else {
+                Output output(filename.str(), binary_write);
+                trans_model.Write(output.Stream(), binary_write);
+                nnet.Write(output.Stream(), binary_write);
+            }
+            KALDI_LOG << "Wrote model to " << filename;
         }
 
         int die_command = COMM_DIE;
@@ -251,9 +227,9 @@ int main(int argc, char *argv[]) {
         bool gpu_instantiated = false;
 
         while(true) {
-            MPI_Recv(&comm_mode, 1, MPI_INT, MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &status);
-
-            if(comm_mode == COMM_DIE) {
+            MPI_Recv(&archive, 1, MPI_INT, MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &status);
+            
+            if(archive == COMM_DIE) {
                 break;
             }
             
@@ -264,8 +240,6 @@ int main(int argc, char *argv[]) {
             }
 #endif
 
-            MPI_Recv(&archive, 1, MPI_INT, MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &status);
-
             MPI_Recv(&frame_shift, 1, MPI_INT, MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &status);
             int current_iter;
             MPI_Recv(&current_iter, 1, MPI_INT, MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &status);
@@ -275,20 +249,17 @@ int main(int argc, char *argv[]) {
             KALDI_LOG << "Slave " << my_rank << " processes archive " << archive << ", current iter "
                       << current_iter << ", frame shift " << frame_shift << ", learning rate " << this_learning_rate;
 
-            if(comm_mode == COMM_FORWARD || comm_mode == COMM_TWO_WAY) {
-                MPI_Recv(&nnet_size, 1, MPI_INT, MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &status);
-                char *nnet_buffer = new char[nnet_size];
-                MPI_Recv(nnet_buffer, nnet_size, MPI_BYTE, MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &status);
-                std::istringstream nnet_buffer_istream(std::string(nnet_buffer, nnet_size));
+            MPI_Recv(&nnet_size, 1, MPI_INT, MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &status);
+            char *nnet_buffer = new char[nnet_size];
+            MPI_Recv(nnet_buffer, nnet_size, MPI_BYTE, MPI_ANY_SOURCE, MPI_TAG, MPI_COMM_WORLD, &status);
+            std::istringstream nnet_buffer_istream(std::string(nnet_buffer, nnet_size));
 
-                nnet->Read(nnet_buffer_istream, true);
+            nnet->Read(nnet_buffer_istream, true);
 
-                if(!trainer) trainer = new NnetCctcTrainer(train_config, trans_model, nnet);
-                else trainer->setupNewIteration(nnet);
+            if(!trainer) trainer = new NnetCctcTrainer(train_config, trans_model, nnet);
+            else trainer->setupNewIteration(nnet);
 
-                delete nnet_buffer;
-            }
-            else trainer->setupNewIteration(NULL);
+            delete nnet_buffer;
 
             char *examples_rspecifier_formatted = new char[examples_rspecifier.length() + MAX_ARCHIVE_DIGITS];
             sprintf(examples_rspecifier_formatted, examples_rspecifier.c_str(), frame_shift, archive, current_iter);
@@ -311,9 +282,7 @@ int main(int argc, char *argv[]) {
             nnet_buffer_ostream.seekg(0, std::ios::beg);
 
             MPI_Send(&nnet_size, 1, MPI_INT, 0, MPI_TAG, MPI_COMM_WORLD);
-            if(comm_mode == COMM_BACKWARD || comm_mode == COMM_TWO_WAY) {
-                MPI_Send((void *)nnet_buffer_ostream.str().c_str(), nnet_size, MPI_BYTE, 0, MPI_TAG, MPI_COMM_WORLD);
-            }
+            MPI_Send((void *)nnet_buffer_ostream.str().c_str(), nnet_size, MPI_BYTE, 0, MPI_TAG, MPI_COMM_WORLD);
 
             nnet_buffer_ostream.str(std::string());
 
