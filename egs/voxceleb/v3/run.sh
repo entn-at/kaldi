@@ -293,9 +293,9 @@ if [ $stage -le 19 ]; then
   echo "only BNF EER: ${eer}%"
   echo "minDCF(p-target=0.01): $mindcf1"
   echo "minDCF(p-target=0.001): $mindcf2"
-  # only BNF EER:
-  # minDCF(p-target=0.01):
-  # minDCF(p-target=0.001):
+  # only BNF EER: 12.32%
+  # minDCF(p-target=0.01): 0.8766
+  # minDCF(p-target=0.001): 0.9323
 fi
 
 if [ $stage -le 20 ]; then
